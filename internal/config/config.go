@@ -1,76 +1,124 @@
-package main
+package config
 
 import (
-        "fmt"
+        "encoding/json"
+        "io/ioutil"
         "log"
-        "net"
-        "net/http"
         "os"
-
-        "github.com/go-openapi/swag"
-        "github.com/s0dimm/aws-s3-proxy/internal/config"
-        "github.com/s0dimm/aws-s3-proxy/internal/controllers"
-        common "github.com/s0dimm/aws-s3-proxy/internal/http"
-        "github.com/s0dimm/aws-s3-proxy/internal/service"
+        "time"
 )
 
-var (
-        ver    = "dev"
-        commit string
-        date   string
-)
-
-func main() {
-        validateAwsConfigurations()
-
-        http.Handle("/", common.WrapHandler(controllers.AwsS3))
-
-        http.HandleFunc("/--version", func(w http.ResponseWriter, r *http.Request) {
-                if len(commit) > 0 && len(date) > 0 {
-                        fmt.Fprintf(w, "%s-%s (built at %s)\n", ver, commit, date)
-                        return
-                }
-                fmt.Fprintln(w, ver)
-        })
-
-        addr := net.JoinHostPort(config.Config.Host, config.Config.Port)
-        log.Printf("[service] listening on %s", addr)
-
-        if len(config.Config.SslCert) > 0 && len(config.Config.SslKey) > 0 {
-                log.Fatal(http.ListenAndServeTLS(
-                        addr, config.Config.SslCert, config.Config.SslKey, nil,
-                ))
-        } else {
-                log.Fatal(http.ListenAndServe(addr, nil))
-        }
+type SecretS3 struct {
+        Endpoint       string `json:"endpoint"`
+        Region         string `json:"region"`
+        AccessKeyID    string `json:"accessKeyID"`
+        AccessSecretKey string `json:"accessSecretKey"`
 }
 
-func validateAwsConfigurations() {
-        if len(os.Getenv("AWS_ACCESS_KEY_ID")) == 0 {
-                log.Print("Not defined environment variable: AWS_ACCESS_KEY_ID")
-        }
-        if len(os.Getenv("AWS_SECRET_ACCESS_KEY")) == 0 {
-                log.Print("Not defined environment variable: AWS_SECRET_ACCESS_KEY")
-        }
-        if len(os.Getenv("AWS_S3_BUCKET")) == 0 {
-                log.Fatal("Missing required environment variable: AWS_S3_BUCKET")
+type BucketInfo struct {
+        Spec struct {
+                SecretS3 SecretS3 `json:"secretS3"`
+        } `json:"spec"`
+}
+
+// Config represents its configurations
+var (
+        Config *config
+)
+
+func init() {
+        Setup()
+}
+
+type config struct {
+        AwsRegion          string        // AWS_REGION
+        AwsAPIEndpoint     string        // AWS_API_ENDPOINT
+        S3Bucket           string        // AWS_S3_BUCKET
+        S3KeyPrefix        string        // AWS_S3_KEY_PREFIX
+        IndexDocument      string        // INDEX_DOCUMENT
+        DirectoryListing    bool          // DIRECTORY_LISTINGS
+        DirListingFormat    string        // DIRECTORY_LISTINGS_FORMAT
+        HTTPCacheControl   string        // HTTP_CACHE_CONTROL (max-age=86400, no-cache ...)
+        HTTPExpires        string        // HTTP_EXPIRES (Thu, 01 Dec 1994 16:00:00 GMT ...)
+        BasicAuthUser      string        // BASIC_AUTH_USER
+        BasicAuthPass      string        // BASIC_AUTH_PASS
+        Port               string        // APP_PORT
+        Host               string        // APP_HOST
+        AccessLog          bool          // ACCESS_LOG
+        SslCert            string        // SSL_CERT_PATH
+        SslKey             string        // SSL_KEY_PATH
+        StripPath          string        // STRIP_PATH
+        ContentEncoding    bool          // CONTENT_ENCODING
+        CorsAllowOrigin    string        // CORS_ALLOW_ORIGIN
+        CorsAllowMethods   string        // CORS_ALLOW_METHODS
+        CorsAllowHeaders   string        // CORS_ALLOW_HEADERS
+        CorsMaxAge         int64         // CORS_MAX_AGE
+        HealthCheckPath    string        // HEALTHCHECK_PATH
+        AllPagesInDir      bool          // GET_ALL_PAGES_IN_DIR
+        MaxIdleConns       int           // MAX_IDLE_CONNECTIONS
+        IdleConnTimeout    time.Duration // IDLE_CONNECTION_TIMEOUT
+        DisableCompression bool          // DISABLE_COMPRESSION
+        InsecureTLS        bool          // Disables TLS validation on request endpoints.
+        JwtSecretKey       string        // JWT_SECRET_KEY
+
+        // New fields for AWS S3 configuration
+        S3Endpoint       string
+        S3AccessKeyID    string
+        S3AccessSecretKey string
+}
+
+// Setup configurations with environment variables
+func Setup() {
+        // Step 1: Read and parse the /data/cosi/BucketInfo file
+        bucketInfo, err := ioutil.ReadFile("/data/cosi/BucketInfo")
+        if err != nil {
+                log.Fatalf("Failed to read BucketInfo file: %v", err)
         }
 
-        if swag.IsZero(config.Config.AwsRegion) {
-                config.Config.AwsRegion = "us-east-1"
-                if region, err := service.GuessBucketRegion(config.Config.S3Bucket); err == nil {
-                        config.Config.AwsRegion = region
-                }
+        var bucketData BucketInfo
+        if err := json.Unmarshal(bucketInfo, &bucketData); err != nil {
+                log.Fatalf("Failed to parse BucketInfo file: %v", err)
         }
 
-        if len(config.Config.S3Endpoint) == 0 {
-                log.Fatal("S3 Endpoint is not defined in the configuration")
-        }
-        if len(config.Config.S3AccessKeyID) == 0 || len(config.Config.S3AccessSecretKey) == 0 {
-                log.Fatal("AWS Access credentials (AccessKeyID and SecretKey) are not defined in the configuration")
+        // Step 2: Set the values from BucketInfo JSON into config
+        Config = &config{
+                AwsRegion:          os.Getenv("AWS_REGION"),
+                AwsAPIEndpoint:     os.Getenv("AWS_API_ENDPOINT"),
+                S3Bucket:           os.Getenv("AWS_S3_BUCKET"),
+                S3KeyPrefix:        os.Getenv("AWS_S3_KEY_PREFIX"),
+                IndexDocument:      os.Getenv("INDEX_DOCUMENT"),
+                DirectoryListing:    false,
+                DirListingFormat:    os.Getenv("DIRECTORY_LISTINGS_FORMAT"),
+                HTTPCacheControl:   os.Getenv("HTTP_CACHE_CONTROL"),
+                HTTPExpires:        os.Getenv("HTTP_EXPIRES"),
+                BasicAuthUser:      os.Getenv("BASIC_AUTH_USER"),
+                BasicAuthPass:      os.Getenv("BASIC_AUTH_PASS"),
+                Port:               os.Getenv("APP_PORT"),
+                Host:               os.Getenv("APP_HOST"),
+                AccessLog:          false,
+                SslCert:            os.Getenv("SSL_CERT_PATH"),
+                SslKey:             os.Getenv("SSL_KEY_PATH"),
+                StripPath:          os.Getenv("STRIP_PATH"),
+                ContentEncoding:    true,
+                CorsAllowOrigin:    os.Getenv("CORS_ALLOW_ORIGIN"),
+                CorsAllowMethods:   os.Getenv("CORS_ALLOW_METHODS"),
+                CorsAllowHeaders:   os.Getenv("CORS_ALLOW_HEADERS"),
+                CorsMaxAge:         600,
+                HealthCheckPath:    os.Getenv("HEALTHCHECK_PATH"),
+                AllPagesInDir:      false,
+                MaxIdleConns:       150,
+                IdleConnTimeout:    time.Duration(10) * time.Second,
+                DisableCompression: true,
+                InsecureTLS:        false,
+                JwtSecretKey:       os.Getenv("JWT_SECRET_KEY"),
+
+                // Step 3: Assign the S3-related variables from the BucketInfo file
+                S3Endpoint:        bucketData.Spec.SecretS3.Endpoint,
+                S3AccessKeyID:     bucketData.Spec.SecretS3.AccessKeyID,
+                S3AccessSecretKey: bucketData.Spec.SecretS3.AccessSecretKey,
         }
 
-        log.Printf("[config] S3 Endpoint: %s", config.Config.S3Endpoint)
-        log.Printf("[config] AWS Region: %s", config.Config.AwsRegion)
-        log.Printf("[config] S3 Bucket: %s", config.Config.S3Bucket)
+        // Logging the values for verification
+        log.Printf("[config] S3 Endpoint: %v", Config.S3Endpoint)
+        log.Printf("[config] S3 Access Secret Key: %v", Config.S3AccessSecretKey)
 }
