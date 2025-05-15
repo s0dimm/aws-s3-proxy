@@ -27,13 +27,12 @@ func main() {
 
 	http.HandleFunc("/--version", func(w http.ResponseWriter, r *http.Request) {
 		if len(commit) > 0 && len(date) > 0 {
-			fmt.Fprintf(w, "%s-%s (built at %s)\n", ver, commit, date)
+			fmt.Fprintf(w, "%s-%s (built at %s)\n", ver,	fmt.Fprintf(w, "%s-%s (built at %s)\n", ver, commit, date)
 			return
 		}
 		fmt.Fprintln(w, ver)
 	})
 
-	// Listen & Serve
 	addr := net.JoinHostPort(config.Config.Host, config.Config.Port)
 	log.Printf("[service] listening on %s", addr)
 
@@ -56,10 +55,22 @@ func validateAwsConfigurations() {
 	if len(os.Getenv("AWS_S3_BUCKET")) == 0 {
 		log.Fatal("Missing required environment variable: AWS_S3_BUCKET")
 	}
+
 	if swag.IsZero(config.Config.AwsRegion) {
 		config.Config.AwsRegion = "us-east-1"
 		if region, err := service.GuessBucketRegion(config.Config.S3Bucket); err == nil {
 			config.Config.AwsRegion = region
 		}
 	}
+
+	if len(config.Config.S3Endpoint) == 0 {
+		log.Fatal("S3 Endpoint is not defined in the configuration")
+	}
+	if len(config.Config.S3AccessKeyID) == 0 || len(config.Config.S3AccessSecretKey) == 0 {
+		log.Fatal("AWS Access credentials (AccessKeyID and SecretKey) are not defined in the configuration")
+	}
+
+	log.Printf("[config] S3 Endpoint: %s", config.Config.S3Endpoint)
+	log.Printf("[config] AWS Region: %s", config.Config.AwsRegion)
+	log.Printf("[config] S3 Bucket: %s", config.Config.S3Bucket)
 }
