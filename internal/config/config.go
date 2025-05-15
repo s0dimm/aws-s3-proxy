@@ -38,7 +38,7 @@ type config struct {
 	S3KeyPrefix        string        // AWS_S3_KEY_PREFIX
 	IndexDocument      string        // INDEX_DOCUMENT
 	DirectoryListing   bool          // DIRECTORY_LISTINGS
-	DirListingFormat   string       Listing   bool          // DIRECTORY_LISTINGS
+	DirListingFormat   string        // Listing   bool          // DIRECTORY_LISTINGS
 	DirListingFormat   string        // DIRECTORY_LISTINGS_FORMAT
 	HTTPCacheControl   string        // HTTP_CACHE_CONTROL (max-age=86400, no-cache ...)
 	HTTPExpires        string        // HTTP_EXPIRES (Thu, 01 Dec 1994 16:00:00 GMT ...)
